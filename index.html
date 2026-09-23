@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
   <meta charset="UTF-8">
-  <title>Leitor de Projetos Scratch Jr (.sjr)</title>
+  <title>Visualizador Scratch Jr</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <style>
     body { font-family: sans-serif; background: #181818; color: #fff; text-align: center; margin: 20px; }
@@ -31,9 +31,143 @@
       text-align: left;
       font-family: monospace;
       font-size: 12px;
-      height: 100px;
+      height: 120px;
       overflow-y: auto;
       border: 1px solid #333;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>Visualizador Scratch Jr</h2>
+  <input type="file" id="zipInput" accept=".sjr,.zip,.sjb" />
+  
+  <div id="palco"></div>
+  <div id="log">Aguardando ficheiro...</div>
+
+  <script>
+    function log(msg) {
+      const logBox = document.getElementById('log');
+      logBox.innerHTML += "<br>> " + msg;
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    // Função para encontrar a lista de personagens em qualquer estrutura do JSON
+    function extrairSprites(pagina) {
+      if (!pagina) return [];
+      if (Array.isArray(pagina.sprites)) return pagina.sprites;
+      if (Array.isArray(pagina.objects)) return pagina.objects;
+      if (Array.isArray(pagina.pageObjects)) return pagina.pageObjects;
+      if (Array.isArray(pagina.actors)) return pagina.actors;
+
+      // Procura qualquer propriedade no objeto que seja uma lista de atores
+      for (let chave in pagina) {
+        if (Array.isArray(pagina[chave]) && pagina[chave].length > 0) {
+          const primeiro = pagina[chave][0];
+          if (primeiro && (primeiro.md5 || primeiro.shape || primeiro.id || primeiro.x !== undefined)) {
+            return pagina[chave];
+          }
+        }
+      }
+      return [];
+    }
+
+    // Função para encontrar o nome do fundo
+    function extrairFundo(pagina) {
+      if (!pagina) return "Desert.svg";
+      if (typeof pagina.background === 'string') return pagina.background;
+      if (typeof pagina.bg === 'string') return pagina.bg;
+      if (pagina.background && pagina.background.md5) return pagina.background.md5;
+      return "Desert.svg";
+    }
+
+    document.getElementById('zipInput').addEventListener('change', async function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      document.getElementById('log').innerHTML = "A abrir " + file.name + "...";
+      const palco = document.getElementById('palco');
+      palco.innerHTML = '';
+      palco.style.backgroundImage = 'none';
+
+      try {
+        const zip = await JSZip.loadAsync(file);
+        const listaFicheiros = Object.keys(zip.files);
+
+        const caminhoJson = listaFicheiros.find(k => k.toLowerCase().endsWith('.json'));
+        if (!caminhoJson) {
+          log("ERRO: Nenhum ficheiro .json encontrado.");
+          return;
+        }
+
+        const jsonText = await zip.file(caminhoJson).async("text");
+        const projectData = JSON.parse(jsonText);
+        log("data.json lido com sucesso.");
+
+        // Identifica a página (pages, pageList ou o próprio objeto)
+        let page = projectData;
+        if (Array.isArray(projectData.pages) && projectData.pages.length > 0) {
+          page = projectData.pages[0];
+        } else if (Array.isArray(projectData.pageList) && projectData.pageList.length > 0) {
+          page = projectData.pageList[0];
+        }
+
+        function obterFicheiro(nome) {
+          if (!nome) return null;
+          const nomeLimpo = nome.split('/').pop().toLowerCase();
+          const caminho = listaFicheiros.find(k => k.toLowerCase().endsWith(nomeLimpo));
+          return caminho ? zip.file(caminho) : null;
+        }
+
+        // 1. Carregar Fundo
+        const bgNome = extrairFundo(page);
+        const bgEntry = obterFicheiro(bgNome) || obterFicheiro("Desert.svg");
+        if (bgEntry) {
+          const bgBlob = await bgEntry.async("blob");
+          palco.style.backgroundImage = `url(${URL.createObjectURL(bgBlob)})`;
+          log("Fundo carregado: " + (bgEntry.name.split('/').pop()));
+        }
+
+        // 2. Carregar Personagens
+        const sprites = extrairSprites(page);
+        log(`Total de personagens encontradas: ${sprites.length}`);
+
+        sprites.forEach((sprite, index) => {
+          const nomeImg = sprite.md5 || sprite.shape || sprite.img || "";
+          const imgEntry = obterFicheiro(nomeImg);
+
+          if (imgEntry) {
+            imgEntry.async("blob").then(blob => {
+              const img = document.createElement('img');
+              img.src = URL.createObjectURL(blob);
+              img.className = 'ator';
+
+              const gridX = parseFloat(sprite.x) || 12;
+              const gridY = parseFloat(sprite.y) || 9;
+
+              let escala = parseFloat(sprite.scale) || 100;
+              if (escala > 5) escala = escala / 100;
+
+              img.style.left = `${gridX * 20}px`;
+              img.style.top = `${gridY * 20}px`;
+              img.style.transform = `translate(-50%, -50%) scale(${escala})`;
+
+              palco.appendChild(img);
+            });
+            log(`Ator ${index + 1}: ${nomeImg}`);
+          } else {
+            log(`Aviso: Imagem do ator ${index + 1} (${nomeImg}) não encontrada no pacote.`);
+          }
+        });
+
+      } catch (err) {
+        log("ERRO AO PROCESSAR: " + err.message);
+      }
+    });
+  </script>
+</body>
+</html>
       border-radius: 4px;
     }
   </style>
