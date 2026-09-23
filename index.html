@@ -2,49 +2,75 @@
 <html lang="pt">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Visualizador Scratch Jr</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <style>
-    body { font-family: sans-serif; background: #181818; color: #fff; text-align: center; margin: 20px; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #1a1a1a;
+      color: #ffffff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+    h1 { margin-bottom: 15px; font-size: 20px; }
+    
+    .caixa-upload {
+      margin-bottom: 15px;
+      background: #2a2a2a;
+      padding: 12px 20px;
+      border-radius: 8px;
+      border: 1px dashed #555;
+    }
+
     #palco {
       width: 480px;
       height: 360px;
-      margin: 15px auto;
-      border: 3px solid #fff;
-      border-radius: 8px;
+      border: 3px solid #ffffff;
+      border-radius: 10px;
       position: relative;
       overflow: hidden;
-      background-color: #fff;
+      background-color: #ffffff;
       background-size: 100% 100%;
       background-repeat: no-repeat;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.5);
     }
+
     .ator {
       position: absolute;
       transform-origin: center center;
+      user-select: none;
     }
+
     #log {
-      background: #000;
+      width: 480px;
+      height: 100px;
+      background: #000000;
       color: #00ff66;
-      padding: 10px;
-      max-width: 480px;
-      margin: 10px auto;
-      text-align: left;
       font-family: monospace;
-      font-size: 12px;
-      height: 120px;
+      font-size: 11px;
+      padding: 10px;
+      margin-top: 15px;
+      border-radius: 6px;
       overflow-y: auto;
+      text-align: left;
       border: 1px solid #333;
-      border-radius: 4px;
     }
   </style>
 </head>
 <body>
 
-  <h2>Visualizador Scratch Jr</h2>
-  <input type="file" id="zipInput" accept=".sjr,.zip,.sjb" />
-  
+  <h1>Visualizador Scratch Jr (.sjr)</h1>
+
+  <div class="caixa-upload">
+    <input type="file" id="zipInput" accept=".sjr,.zip,.sjb" />
+  </div>
+
   <div id="palco"></div>
-  <div id="log">Aguardando ficheiro...</div>
+  <div id="log">> Seleciona um ficheiro .sjr para carregar...</div>
 
   <script>
     function log(msg) {
@@ -53,7 +79,7 @@
       logBox.scrollTop = logBox.scrollHeight;
     }
 
-    // Função para encontrar a lista de personagens em qualquer estrutura do JSON
+    // Procura lista de atores no JSON
     function extrairSprites(pagina) {
       if (!pagina) return [];
       if (Array.isArray(pagina.sprites)) return pagina.sprites;
@@ -61,11 +87,10 @@
       if (Array.isArray(pagina.pageObjects)) return pagina.pageObjects;
       if (Array.isArray(pagina.actors)) return pagina.actors;
 
-      // Procura qualquer propriedade no objeto que seja uma lista de atores
       for (let chave in pagina) {
         if (Array.isArray(pagina[chave]) && pagina[chave].length > 0) {
-          const primeiro = pagina[chave][0];
-          if (primeiro && (primeiro.md5 || primeiro.shape || primeiro.id || primeiro.x !== undefined)) {
+          const item = pagina[chave][0];
+          if (item && (item.md5 || item.shape || item.id || item.x !== undefined)) {
             return pagina[chave];
           }
         }
@@ -73,7 +98,7 @@
       return [];
     }
 
-    // Função para encontrar o nome do fundo
+    // Procura o nome do fundo
     function extrairFundo(pagina) {
       if (!pagina) return "Desert.svg";
       if (typeof pagina.background === 'string') return pagina.background;
@@ -86,7 +111,7 @@
       const file = e.target.files[0];
       if (!file) return;
 
-      document.getElementById('log').innerHTML = "A abrir " + file.name + "...";
+      document.getElementById('log').innerHTML = "A analisar " + file.name + "...";
       const palco = document.getElementById('palco');
       palco.innerHTML = '';
       palco.style.backgroundImage = 'none';
@@ -95,17 +120,18 @@
         const zip = await JSZip.loadAsync(file);
         const listaFicheiros = Object.keys(zip.files);
 
+        // Encontrar o ficheiro .json
         const caminhoJson = listaFicheiros.find(k => k.toLowerCase().endsWith('.json'));
         if (!caminhoJson) {
-          log("ERRO: Nenhum ficheiro .json encontrado.");
+          log("ERRO: Nenhum ficheiro .json encontrado no pacote!");
           return;
         }
 
         const jsonText = await zip.file(caminhoJson).async("text");
         const projectData = JSON.parse(jsonText);
-        log("data.json lido com sucesso.");
+        log("Ficheiro data.json lido com sucesso.");
 
-        // Identifica a página (pages, pageList ou o próprio objeto)
+        // Identificar a página inicial
         let page = projectData;
         if (Array.isArray(projectData.pages) && projectData.pages.length > 0) {
           page = projectData.pages[0];
@@ -126,14 +152,14 @@
         if (bgEntry) {
           const bgBlob = await bgEntry.async("blob");
           palco.style.backgroundImage = `url(${URL.createObjectURL(bgBlob)})`;
-          log("Fundo carregado: " + (bgEntry.name.split('/').pop()));
+          log("Cenário carregado: " + bgEntry.name.split('/').pop());
         }
 
-        // 2. Carregar Personagens
+        // 2. Carregar Atores
         const sprites = extrairSprites(page);
-        log(`Total de personagens encontradas: ${sprites.length}`);
+        log(`Personagens detetadas: ${sprites.length}`);
 
-        sprites.forEach((sprite, index) => {
+        sprites.forEach((sprite, idx) => {
           const nomeImg = sprite.md5 || sprite.shape || sprite.img || "";
           const imgEntry = obterFicheiro(nomeImg);
 
@@ -155,14 +181,12 @@
 
               palco.appendChild(img);
             });
-            log(`Ator ${index + 1}: ${nomeImg}`);
-          } else {
-            log(`Aviso: Imagem do ator ${index + 1} (${nomeImg}) não encontrada no pacote.`);
+            log(`Ator ${idx + 1}: ${nomeImg}`);
           }
         });
 
       } catch (err) {
-        log("ERRO AO PROCESSAR: " + err.message);
+        log("ERRO AO ABRIR: " + err.message);
       }
     });
   </script>
