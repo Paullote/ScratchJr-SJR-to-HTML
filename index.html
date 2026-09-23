@@ -2,422 +2,83 @@
 <html lang="pt">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Leitor de .SJR (ScratchJr)</title>
-  <!-- Biblioteca para descompactar ficheiros .sjr / .zip no navegador -->
+  <title>Leitor de Projeto Scratch Jr</title>
+  <!-- Biblioteca para ler o ficheiro ZIP no navegador -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-      font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #f0f0f0; }
+    #palco { 
+      width: 480px; 
+      height: 360px; 
+      border: 3px solid #333; 
+      position: relative; 
+      overflow: hidden; 
+      background-size: cover;
+      background-position: center;
+      background-color: #fff;
     }
-
-    body {
-      background-color: #1e1e2e;
-      color: #cdd6f4;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      min-height: 100vh;
-      padding: 20px;
-    }
-
-    h1 {
-      margin-bottom: 15px;
-      color: #89b4fa;
-      font-size: 1.8rem;
-    }
-
-    .upload-container {
-      margin-bottom: 20px;
-      text-align: center;
-    }
-
-    input[type="file"] {
-      display: none;
-    }
-
-    .btn-upload {
-      background-color: #89b4fa;
-      color: #11111b;
-      padding: 12px 24px;
-      border-radius: 8px;
-      cursor: pointer;
-      font-weight: bold;
-      transition: background 0.3s;
-      display: inline-block;
-    }
-
-    .btn-upload:hover {
-      background-color: #b4befe;
-    }
-
-    /* Proporção padrão do palco do ScratchJr (640x480) */
-    #stage {
-      width: 640px;
-      height: 480px;
-      background-color: #ffffff;
-      border: 4px solid #45475a;
-      border-radius: 12px;
-      position: relative;
-      overflow: hidden;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-    }
-
-    .background-img {
-      width: 100%;
-      height: 100%;
-      position: absolute;
-      top: 0;
-      left: 0;
-      object-fit: cover;
-      z-index: 1;
-    }
-
-    .character-img {
-      position: absolute;
-      z-index: 2;
-      transform-origin: center center;
-      user-select: none;
-      cursor: pointer;
-      transition: transform 0.1s linear;
-    }
-
-    #info {
-      margin-top: 15px;
-      font-size: 14px;
-      color: #a6adc8;
-    }
+    .personagem { position: absolute; transform-origin: center; }
   </style>
 </head>
 <body>
 
-  <h1>Leitor de Ficheiros .SJR (ScratchJr)</h1>
-  
-  <div class="upload-container">
-    <label for="sjrFile" class="btn-upload">Selecionar Ficheiro .sjr</label>
-    <input type="file" id="sjrFile" accept=".sjr,.zip">
-  </div>
-
-  <div id="stage"></div>
-
-  <div id="info">Selecione um projeto ScratchJr para visualizar no palco.</div>
+  <h2>Player Web Scratch Jr</h2>
+  <input type="file" id="zipInput" accept=".zip,.sjb" />
+  <br>
+  <div id="palco"></div>
 
   <script>
-    const fileInput = document.getElementById('sjrFile');
-    const stage = document.getElementById('stage');
-    const info = document.getElementById('info');
-
-    fileInput.addEventListener('change', async (event) => {
-      const file = event.target.files[0];
+    document.getElementById('zipInput').addEventListener('change', async function(e) {
+      const file = e.target.files[0];
       if (!file) return;
 
-      info.innerText = "A carregar e a descompactar ficheiro .sjr...";
-      stage.innerHTML = "";
-
-      try {
-        const zip = await JSZip.loadAsync(file);
-
-        // Procura flexível pelo ficheiro data.json (ignora barras iniciais ou subpastas)
-        const jsonFiles = zip.file(/data\.json$/i);
-        
-        if (!jsonFiles || jsonFiles.length === 0) {
-          alert("Ficheiro data.json não foi encontrado dentro do .sjr!");
-          info.innerText = "Erro: Estrutura do ficheiro .sjr inválida.";
-          return;
-        }
-
-        const jsonText = await jsonFiles[0].async("string");
-        const projectData = JSON.parse(jsonText);
-
-        info.innerText = "Projeto carregado! A processar páginas e elementos...";
-        await renderPage(projectData, zip);
-
-      } catch (err) {
-        console.error(err);
-        alert("Erro ao processar o ficheiro .sjr.");
-        info.innerText = "Erro ao processar o ficheiro.";
-      }
-    });
-
-    // Função auxiliar para localizar recursos dentro do ZIP sem falhar por causa de caminhos/barras
-    function getZipFile(zip, filename) {
-      if (!filename) return null;
-      const cleanName = filename.split('/').pop();
-      const matches = zip.file(new RegExp(cleanName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i'));
-      return matches.length > 0 ? matches[0] : null;
-    }
-
-    async function renderPage(data, zip) {
-      console.log("Estrutura do data.json:", data);
-
-      let pages = [];
-
-      // Mapeamento compatível com as diferentes versões de gravação do ScratchJr
-      if (Array.isArray(data)) {
-        if (data[0] && data[0].pages) {
-          pages = typeof data[0].pages === 'string' ? JSON.parse(data[0].pages) : data[0].pages;
-        } else {
-          pages = data;
-        }
-      } 
-      else if (data.pages) {
-        pages = typeof data.pages === 'string' ? JSON.parse(data.pages) : data.pages;
-      } 
-      else if (data.pageList && Array.isArray(data.pageList)) {
-        pages = data.pageList.map(pageId => {
-          let pageData = data[pageId];
-          return typeof pageData === 'string' ? JSON.parse(pageData) : pageData;
-        }).filter(Boolean);
-      } 
-      else {
-        const pageKeys = Object.keys(data).filter(k => k.toLowerCase().startsWith('page'));
-        pages = pageKeys.map(k => {
-          let pageData = data[k];
-          return typeof pageData === 'string' ? JSON.parse(pageData) : pageData;
-        }).filter(Boolean);
-      }
-
-      if (!pages || pages.length === 0) {
-        info.innerText = "Nenhuma página encontrada no projeto. Verifique a consola do navegador.";
-        console.error("Não foi possível identificar a estrutura de páginas:", data);
-        return;
-      }
-
-      let currentPage = pages[0];
-      if (typeof currentPage === 'string') {
-        currentPage = JSON.parse(currentPage);
-      }
-
-      stage.innerHTML = "";
-
-      // 1. Carregar plano de fundo (Background)
-      if (currentPage.bk) {
-        const bgFile = getZipFile(zip, currentPage.bk);
-        if (bgFile) {
-          let blobType = "image/svg+xml";
-          if (currentPage.bk.toLowerCase().endsWith('.png')) blobType = "image/png";
-
-          const bgArrayBuffer = await bgFile.async("arraybuffer");
-          const bgBlob = new Blob([bgArrayBuffer], { type: blobType });
-          const bgUrl = URL.createObjectURL(bgBlob);
-
-          const bgImg = document.createElement('img');
-          bgImg.src = bgUrl;
-          bgImg.className = 'background-img';
-          stage.appendChild(bgImg);
-        }
-      }
-
-      // 2. Carregar as figuras e personagens (Sprites)
-      const sprites = currentPage.sprites || currentPage.spriteList || [];
-      if (Array.isArray(sprites)) {
-        for (let sprite of sprites) {
-          if (typeof sprite === 'string') {
-            sprite = JSON.parse(sprite);
-          }
-
-          const spriteMd5 = sprite.md5 || sprite.shape;
-          if (!spriteMd5) continue;
-
-          const charFile = getZipFile(zip, spriteMd5);
-
-          if (charFile) {
-            let blobType = "image/svg+xml";
-            if (spriteMd5.toLowerCase().endsWith('.png')) blobType = "image/png";
-
-            const charArrayBuffer = await charFile.async("arraybuffer");
-            const charBlob = new Blob([charArrayBuffer], { type: blobType });
-            const charUrl = URL.createObjectURL(charBlob);
-
-            const charImg = document.createElement('img');
-            charImg.src = charUrl;
-            charImg.className = 'character-img';
-
-            // Escala de coordenadas do palco (640x480)
-            const scaleX = 640 / 480; 
-            const scaleY = 480 / 360;
-
-            const x = (sprite.x || 0) * scaleX;
-            const y = (sprite.y || 0) * scaleY;
-            const scale = (sprite.scale || 100) / 100;
-
-            charImg.style.left = `${x}px`;
-            charImg.style.top = `${y}px`;
-            charImg.style.transform = `scale(${scale})`;
-
-            // Interação simples ao tocar/clicar na figura
-            charImg.addEventListener('click', () => {
-              charImg.style.transform = `scale(${scale * 1.2})`;
-              setTimeout(() => {
-                charImg.style.transform = `scale(${scale})`;
-              }, 200);
-            });
-
-            stage.appendChild(charImg);
-          }
-        }
-      }
-
-      info.innerText = "Projeto exibido com sucesso! Clique nos elementos para interagir.";
-    }
-  </script>
-</body>
-</html>
-    }
-
-    .character-img {
-      position: absolute;
-      z-index: 2;
-      transform-origin: center center;
-      user-select: none;
-      cursor: pointer;
-      transition: transform 0.1s linear;
-    }
-
-    #info {
-      margin-top: 15px;
-      font-size: 14px;
-      color: #a6adc8;
-    }
-  </style>
-</head>
-<body>
-
-  <h1>Leitor e Executador de .SJR</h1>
-  
-  <div class="upload-container">
-    <label for="sjrFile" class="btn-upload">Selecionar arquivo .sjr</label>
-    <input type="file" id="sjrFile" accept=".sjr,.zip">
-  </div>
-
-  <!-- Palco onde o projeto do ScratchJr será exibido -->
-  <div id="stage"></div>
-
-  <div id="info">Selecione um projeto ScratchJr para visualizar no palco.</div>
-
-<script>
-  const fileInput = document.getElementById('sjrFile');
-  const stage = document.getElementById('stage');
-  const info = document.getElementById('info');
-
-  fileInput.addEventListener('change', async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
-
-    info.innerText = "Carregando e descompactando arquivo .sjr...";
-    stage.innerHTML = "";
-
-    try {
       const zip = await JSZip.loadAsync(file);
+      const palco = document.getElementById('palco');
+      palco.innerHTML = ''; // Limpa o palco
 
-      // Busca flexível pelo arquivo data.json (ignora se há barras ou pastas na frente)
-      const jsonFiles = zip.file(/data\.json$/i);
-      
-      if (!jsonFiles || jsonFiles.length === 0) {
-        alert("Arquivo data.json não foi encontrado dentro do .sjr!");
-        info.innerText = "Erro: Estrutura do arquivo .sjr inválida.";
+      // 1. Ler o ficheiro data.json
+      const jsonFile = zip.file("project/data.json") || zip.file("data.json");
+      if (!jsonFile) {
+        alert("Ficheiro data.json não encontrado no pacote!");
         return;
       }
-
-      // Lê o conteúdo do primeiro data.json encontrado
-      const jsonText = await jsonFiles[0].async("string");
+      
+      const jsonText = await jsonFile.async("text");
       const projectData = JSON.parse(jsonText);
 
-      info.innerText = "Projeto carregado! Processando páginas e elementos...";
-      await renderPage(projectData, zip);
-
-    } catch (err) {
-      console.error(err);
-      alert("Erro ao processar o arquivo .sjr.");
-      info.innerText = "Erro ao processar o arquivo.";
-    }
-  });
-
-  // Função auxiliar para localizar imagens e sons dentro do ZIP de forma flexível
-  function getZipFile(zip, filename) {
-    if (!filename) return null;
-    const cleanName = filename.split('/').pop(); // Extrai apenas o nome do arquivo
-    const matches = zip.file(new RegExp(cleanName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'i'));
-    return matches.length > 0 ? matches[0] : null;
-  }
-
-  async function renderPage(data, zip) {
-    let pages = typeof data.pages === 'string' ? JSON.parse(data.pages) : data.pages;
-
-    if (!pages && data.page0) {
-      // Suporte para versões alternativas onde as páginas são gravadas como page0, page1...
-      pages = Object.keys(data)
-        .filter(k => k.startsWith('page'))
-        .map(k => typeof data[k] === 'string' ? JSON.parse(data[k]) : data[k]);
-    }
-
-    if (!pages || pages.length === 0) {
-      info.innerText = "Nenhuma página encontrada no projeto.";
-      return;
-    }
-
-    const currentPage = pages[0];
-
-    // 1. Carregar plano de fundo (Background)
-    if (currentPage.bk) {
-      const bgFile = getZipFile(zip, currentPage.bk);
+      // 2. Carregar o Fundo (Background)
+      const bgFile = zip.file("project/backgrounds/Desert.svg") || zip.file("backgrounds/Desert.svg");
       if (bgFile) {
         const bgBlob = await bgFile.async("blob");
-        const bgUrl = URL.createObjectURL(bgBlob);
-
-        const bgImg = document.createElement('img');
-        bgImg.src = bgUrl;
-        bgImg.className = 'background-img';
-        stage.appendChild(bgImg);
+        palco.style.backgroundImage = `url(${URL.createObjectURL(bgBlob)})`;
       }
-    }
 
-    // 2. Carregar os personagens/elementos (Sprites)
-    if (currentPage.sprites) {
-      for (const sprite of currentPage.sprites) {
-        const spriteMd5 = sprite.md5 || sprite.shape;
-        if (!spriteMd5) continue;
+      // 3. Renderizar as Personagens no Palco
+      const page = projectData.pages ? projectData.pages[0] : projectData;
+      const sprites = page.sprites || page.objects || [];
 
-        const charFile = getZipFile(zip, spriteMd5);
+      for (const sprite of sprites) {
+        // Encontrar o ficheiro SVG correspondente
+        const spriteFile = zip.file(`project/characters/${sprite.md5}`) || zip.file(`characters/${sprite.md5}`);
+        
+        if (spriteFile) {
+          const blob = await spriteFile.async("blob");
+          const img = document.createElement('img');
+          img.src = URL.createObjectURL(blob);
+          img.className = 'personagem';
+          
+          // Ajustar posições x e y (convertendo a grelha do Scratch Jr para pixels)
+          const posX = (sprite.x || 0) * (480 / 24);
+          const posY = (sprite.y || 0) * (360 / 18);
+          
+          img.style.left = `${posX}px`;
+          img.style.top = `${posY}px`;
+          img.style.width = `${(sprite.scale || 1) * 50}px`;
 
-        if (charFile) {
-          const charBlob = await charFile.async("blob");
-          const charUrl = URL.createObjectURL(charBlob);
-
-          const charImg = document.createElement('img');
-          charImg.src = charUrl;
-          charImg.className = 'character-img';
-
-          // Proporções de renderização do ScratchJr (640x480 no palco de exibição)
-          const scaleX = 640 / 480; 
-          const scaleY = 480 / 360;
-
-          const x = (sprite.x || 0) * scaleX;
-          const y = (sprite.y || 0) * scaleY;
-          const scale = (sprite.scale || 100) / 100;
-
-          charImg.style.left = `${x}px`;
-          charImg.style.top = `${y}px`;
-          charImg.style.transform = `scale(${scale})`;
-
-          // Animação simples de toque no personagem
-          charImg.addEventListener('click', () => {
-            charImg.style.transform = `scale(${scale * 1.2})`;
-            setTimeout(() => {
-              charImg.style.transform = `scale(${scale})`;
-            }, 200);
-          });
-
-          stage.appendChild(charImg);
+          palco.appendChild(img);
         }
       }
-    }
-
-    info.innerText = "Projeto exibido com sucesso!";
-  }
-</script>
+    });
+  </script>
 </body>
 </html>
