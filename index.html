@@ -2,10 +2,10 @@
 <html lang="pt">
 <head>
   <meta charset="UTF-8">
-  <title>Player Scratch Jr</title>
+  <title>Leitor de Projetos Scratch Jr (.sjr)</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <style>
-    body { font-family: sans-serif; background: #1e1e1e; color: #fff; text-align: center; margin: 20px; }
+    body { font-family: sans-serif; background: #181818; color: #fff; text-align: center; margin: 20px; }
     #palco {
       width: 480px;
       height: 360px;
@@ -24,16 +24,118 @@
     }
     #log {
       background: #000;
-      color: #00ff00;
+      color: #00ff66;
       padding: 10px;
       max-width: 480px;
       margin: 10px auto;
       text-align: left;
       font-family: monospace;
-      font-size: 11px;
-      height: 80px;
+      font-size: 12px;
+      height: 100px;
       overflow-y: auto;
+      border: 1px solid #333;
       border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>Player Scratch Jr (.sjr)</h2>
+  <!-- Adicionada a extensão .sjr ao campo accept -->
+  <input type="file" id="zipInput" accept=".sjr,.zip,.sjb" />
+  
+  <div id="palco"></div>
+  <div id="log">Seleciona o teu ficheiro .sjr para abrir...</div>
+
+  <script>
+    function log(msg) {
+      const logBox = document.getElementById('log');
+      logBox.innerHTML += "<br>> " + msg;
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
+    document.getElementById('zipInput').addEventListener('change', async function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      document.getElementById('log').innerHTML = "A abrir ficheiro " + file.name + "...";
+      const palco = document.getElementById('palco');
+      palco.innerHTML = '';
+      palco.style.backgroundImage = 'none';
+
+      try {
+        // O JSZip lê o ficheiro .sjr diretamente como se fosse um ZIP
+        const zip = await JSZip.loadAsync(file);
+        const listaFicheiros = Object.keys(zip.files);
+
+        // 1. Procurar o ficheiro JSON de dados
+        const caminhoJson = listaFicheiros.find(k => k.toLowerCase().endsWith('.json'));
+
+        if (!caminhoJson) {
+          log("ERRO: O ficheiro .sjr selecionado não contém um ficheiro .json interno.");
+          return;
+        }
+
+        log("Ficheiro de dados encontrado: " + caminhoJson);
+        const jsonText = await zip.file(caminhoJson).async("text");
+        const projectData = JSON.parse(jsonText);
+
+        const page = (projectData.pages && projectData.pages.length > 0) ? projectData.pages[0] : projectData;
+
+        // Função auxiliar para localizar ficheiros dentro das pastas do .sjr
+        function obterFicheiro(nome) {
+          if (!nome) return null;
+          const nomeLimpo = nome.split('/').pop().toLowerCase();
+          const caminho = listaFicheiros.find(k => k.toLowerCase().endsWith(nomeLimpo));
+          return caminho ? zip.file(caminho) : null;
+        }
+
+        // 2. Carregar Imagem de Fundo
+        const bgNome = page.background || "desert.svg";
+        const bgEntry = obterFicheiro(bgNome) || obterFicheiro("desert.svg");
+        if (bgEntry) {
+          const bgBlob = await bgEntry.async("blob");
+          palco.style.backgroundImage = `url(${URL.createObjectURL(bgBlob)})`;
+          log("Cenário carregado com sucesso.");
+        }
+
+        // 3. Carregar e Posicionar os Atores
+        const sprites = page.sprites || page.objects || [];
+        log(`Personagens detetadas: ${sprites.length}`);
+
+        for (const sprite of sprites) {
+          const nomeImg = sprite.md5 || sprite.shape || "";
+          const imgEntry = obterFicheiro(nomeImg);
+
+          if (imgEntry) {
+            const blob = await imgEntry.async("blob");
+            const img = document.createElement('img');
+            img.src = URL.createObjectURL(blob);
+            img.className = 'ator';
+
+            // Posição no sistema de coordenadas do Scratch Jr (24x18)
+            const gridX = parseFloat(sprite.x) || 12;
+            const gridY = parseFloat(sprite.y) || 9;
+
+            let escala = parseFloat(sprite.scale) || 100;
+            if (escala > 5) escala = escala / 100;
+
+            img.style.left = `${gridX * 20}px`;
+            img.style.top = `${gridY * 20}px`;
+            img.style.transform = `translate(-50%, -50%) scale(${escala})`;
+
+            palco.appendChild(img);
+            log(`Ator '${nomeImg}' posicionado.`);
+          }
+        }
+
+      } catch (err) {
+        log("ERRO AO ABRIR .SJR: " + err.message);
+      }
+    });
+  </script>
+</body>
+</html>
     }
   </style>
 </head>
