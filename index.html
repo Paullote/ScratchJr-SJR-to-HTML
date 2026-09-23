@@ -2,81 +2,137 @@
 <html lang="pt">
 <head>
   <meta charset="UTF-8">
-  <title>Leitor de Projeto Scratch Jr</title>
-  <!-- Biblioteca para ler o ficheiro ZIP no navegador -->
+  <title>Player Scratch Jr</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
   <style>
-    body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #f0f0f0; }
-    #palco { 
-      width: 480px; 
-      height: 360px; 
-      border: 3px solid #333; 
-      position: relative; 
-      overflow: hidden; 
-      background-size: cover;
-      background-position: center;
+    body { font-family: sans-serif; background: #1e1e1e; color: #fff; text-align: center; margin: 20px; }
+    #palco {
+      width: 480px;
+      height: 360px;
+      margin: 15px auto;
+      border: 3px solid #fff;
+      border-radius: 8px;
+      position: relative;
+      overflow: hidden;
       background-color: #fff;
+      background-size: 100% 100%;
+      background-repeat: no-repeat;
     }
-    .personagem { position: absolute; transform-origin: center; }
+    .ator {
+      position: absolute;
+      transform-origin: center center;
+    }
+    #log {
+      background: #000;
+      color: #00ff00;
+      padding: 10px;
+      max-width: 480px;
+      margin: 10px auto;
+      text-align: left;
+      font-family: monospace;
+      font-size: 11px;
+      height: 80px;
+      overflow-y: auto;
+      border-radius: 4px;
+    }
   </style>
 </head>
 <body>
 
-  <h2>Player Web Scratch Jr</h2>
+  <h2>Visualizador Scratch Jr</h2>
   <input type="file" id="zipInput" accept=".zip,.sjb" />
-  <br>
+  
   <div id="palco"></div>
+  <div id="log">Seleciona um ficheiro do Scratch Jr para carregar...</div>
 
   <script>
+    function enviarLog(texto) {
+      const logBox = document.getElementById('log');
+      logBox.innerHTML += "<br>> " + texto;
+      logBox.scrollTop = logBox.scrollHeight;
+    }
+
     document.getElementById('zipInput').addEventListener('change', async function(e) {
       const file = e.target.files[0];
       if (!file) return;
 
-      const zip = await JSZip.loadAsync(file);
+      document.getElementById('log').innerHTML = "A ler ficheiro...";
       const palco = document.getElementById('palco');
-      palco.innerHTML = ''; // Limpa o palco
+      palco.innerHTML = '';
+      palco.style.backgroundImage = 'none';
 
-      // 1. Ler o ficheiro data.json
-      const jsonFile = zip.file("project/data.json") || zip.file("data.json");
-      if (!jsonFile) {
-        alert("Ficheiro data.json não encontrado no pacote!");
-        return;
-      }
-      
-      const jsonText = await jsonFile.async("text");
-      const projectData = JSON.parse(jsonText);
+      try {
+        const zip = await JSZip.loadAsync(file);
 
-      // 2. Carregar o Fundo (Background)
-      const bgFile = zip.file("project/backgrounds/Desert.svg") || zip.file("backgrounds/Desert.svg");
-      if (bgFile) {
-        const bgBlob = await bgFile.async("blob");
-        palco.style.backgroundImage = `url(${URL.createObjectURL(bgBlob)})`;
-      }
-
-      // 3. Renderizar as Personagens no Palco
-      const page = projectData.pages ? projectData.pages[0] : projectData;
-      const sprites = page.sprites || page.objects || [];
-
-      for (const sprite of sprites) {
-        // Encontrar o ficheiro SVG correspondente
-        const spriteFile = zip.file(`project/characters/${sprite.md5}`) || zip.file(`characters/${sprite.md5}`);
-        
-        if (spriteFile) {
-          const blob = await spriteFile.async("blob");
-          const img = document.createElement('img');
-          img.src = URL.createObjectURL(blob);
-          img.className = 'personagem';
-          
-          // Ajustar posições x e y (convertendo a grelha do Scratch Jr para pixels)
-          const posX = (sprite.x || 0) * (480 / 24);
-          const posY = (sprite.y || 0) * (360 / 18);
-          
-          img.style.left = `${posX}px`;
-          img.style.top = `${posY}px`;
-          img.style.width = `${(sprite.scale || 1) * 50}px`;
-
-          palco.appendChild(img);
+        // Procura ficheiros no ZIP independentemente da pasta
+        function obterFicheiro(nome) {
+          if (!nome) return null;
+          const chaves = Object.keys(zip.files);
+          const encontrado = chaves.find(k => k.toLowerCase().endsWith(nome.toLowerCase()));
+          return encontrado ? zip.file(encontrado) : null;
         }
+
+        // 1. Ler data.json
+        const jsonEntry = obterFicheiro("data.json");
+        if (!jsonEntry) {
+          enviarLog("ERRO: Ficheiro data.json não encontrado no pacote!");
+          return;
+        }
+
+        const jsonText = await jsonEntry.async("text");
+        const projectData = JSON.parse(jsonText);
+        enviarLog("data.json lido com sucesso.");
+
+        const page = (projectData.pages && projectData.pages.length > 0) ? projectData.pages[0] : projectData;
+
+        // 2. Carregar o Fundo
+        const bgNome = page.background || "Desert.svg";
+        const bgEntry = obterFicheiro(bgNome) || obterFicheiro("Desert.svg");
+        if (bgEntry) {
+          const bgBlob = await bgEntry.async("blob");
+          palco.style.backgroundImage = `url(${URL.createObjectURL(bgBlob)})`;
+          enviarLog("Fundo carregado.");
+        }
+
+        // 3. Renderizar as Personagens
+        const sprites = page.sprites || page.objects || [];
+        enviarLog(`Total de personagens encontradas: ${sprites.length}`);
+
+        for (const sprite of sprites) {
+          const nomeImg = sprite.md5 || sprite.shape || "";
+          const imgEntry = obterFicheiro(nomeImg);
+
+          if (imgEntry) {
+            const blob = await imgEntry.async("blob");
+            const img = document.createElement('img');
+            img.src = URL.createObjectURL(blob);
+            img.className = 'ator';
+
+            // Grelha do Scratch Jr: 24 colunas x 18 linhas
+            // Ecrã: 480px / 24 = 20px por unidade
+            const gridX = parseFloat(sprite.x) || 12;
+            const gridY = parseFloat(sprite.y) || 9;
+
+            const posX = gridX * 20;
+            const posY = gridY * 20;
+
+            // Correção de Escala (se for > 5 trata como percentagem 100% = 1)
+            let escala = parseFloat(sprite.scale) || 100;
+            if (escala > 5) escala = escala / 100;
+
+            img.style.left = `${posX}px`;
+            img.style.top = `${posY}px`;
+            img.style.transform = `translate(-50%, -50%) scale(${escala})`;
+
+            palco.appendChild(img);
+            enviarLog(`Personagem '${nomeImg}' posicionada em X:${gridX} Y:${gridY}`);
+          } else {
+            enviarLog(`Aviso: Ficheiro de imagem '${nomeImg}' não encontrado.`);
+          }
+        }
+
+      } catch (err) {
+        enviarLog("ERRO: " + err.message);
       }
     });
   </script>
